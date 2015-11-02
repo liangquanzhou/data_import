@@ -1,9 +1,11 @@
 ### set work dir ###
 setwd("C:/Users/Liangquan/Google Drive/GovPilot/Teams/Data Aggregation _ Integrity Team/New Jersey/Data Import/PAE0601M 07_31_2015  22_05_20")
 
+setwd("C:/Users/Liangquan Zhou/Desktop/govpilot/data_import/data_import")
 
 ############ packages needed ##############
-pckg = c('tidyr', 'stringi', 'data.table', 'reshape2', 'plyr', 'choroplethrMaps', 'choroplethr', 'RODBC', 'zipcode') 
+pckg = c('tidyr', 'stringi', 'data.table', 'reshape2', 'plyr','RgoogleMaps', 'httr', 'rjson', 'XML',
+  'choroplethrMaps', 'choroplethr', 'RODBC', 'zipcode','RCurl','jsonlite', 'RJSONIO', 'ggmap') 
 
 is.installed <- function(mypkg){
   is.element(mypkg, installed.packages()[,1])
@@ -24,8 +26,9 @@ fc = file('pampac0601.txt')
 mylist = strsplit(readLines(fc), ";")
 close(fc)
 
-l1 = lapply(mylist, as.data.frame)
-l2 = lapply(l1, t)
+
+options(stringAsFactors=F)
+l2 = lapply(mylist, t)
 l3 = lapply(l2, as.data.frame)
 d = as.data.frame(rbindlist(l3, fill = T))
 
@@ -71,30 +74,27 @@ d2s = d2s[,-c(3,4,5)]
 names(d2s) = LETTERS[1:length(names(d2s))]
 
 ## drop rows with blank column C ##
-
 # trim column C
-d2s$D = trimws(d2s$C)
-d2s = d2s[!(is.na(d2s$D) | d2s$D==""), ]
-# View(d2s[order(d2s$D),])
-drops = c("D")
-d2s = d2s[,!(names(d2s) %in% drops)]
+d2s$C = trimws(d2s$C)
+d2s = d2s[!(is.na(d2s$C) | d2s$C==""), ]
 
+# drops = c("D")
+# d2s = d2s[,!(names(d2s) %in% drops)]
 
 ## drop duplicates ##
 d2s = d2s[!duplicated(d2s[,"B"]),]
 
 #### connect to acess database ###
-accessname = 'Fix Attorneys.accdb'
-dbpath = paste(getwd(), '/', accessname, sep = '')
+# accessname = 'Fix Attorneys.accdb'
+# dbpath = paste(getwd(), '/', accessname, sep = '')
 
-con = odbcConnectAccess2007(dbpath)
+# con = odbcConnectAccess2007(dbpath)
 
-sqlTables(con, tableType = "TABLE")$TABLE_NAME
+# sqlTables(con, tableType = "TABLE")$TABLE_NAME
 
-Att <- sqlFetch(con, "List")
-str(Att)
-View(Att)
-
+# Att <- sqlFetch(con, "List")
+# str(Att)
+# View(Att)
 
 
 
@@ -108,30 +108,86 @@ names(d3) = LETTERS[1:length(names(d3))]
 
 drops = c('B', 'C', 'F', 'G', 'H', 'I', 'M', 'N', 'O', 'P', 'Q', 'R')
 d3s = d3[,!(names(d3) %in% drops)]
-View(d3s)
+head(d3s)
 
 names(d3s) = LETTERS[1:length(names(d3s))]
-View(d3s[order(d3s$D),])
+
+### remove rows have no address (D)
+# View(d3s1[order(d3s1$D),])
+d3s$D = gsub("^$|^ *$", NA, d3s$D)
+d3s = (d3s[!(is.na(d3s$D) | d3s$D==""), ])
+
 
 # trim column D, E, F
 d3s$D = trimws(d3s$D)
 d3s$E = trimws(d3s$E)
 d3s$F = trimws(d3s$F)
 
-d3s = d3s[!(is.na(d3s$D) | d3s$D==""), ]
+## remove duplicates 
+dup = which(d3s$B %in% d3s[duplicated(d3s[,"B"]),]$B) ## duplicated records in B
+dup.lev = d3s[duplicated(d3s[,"B"]),]$B #duplicated docket numbers
+
+## remove these records without blk and lot numbers
+d3s[dup,c("G","H")] = apply(d3s[dup,c("G","H")], 2, function(x) gsub("^ *$", NA, x))
+d3s = d3s[!(is.na(d3s$G) | is.na(d3s$G)), ]
+
+
+## remove these rocords with same blk and lot numbers  -- NOT COMPLETED
+# View(d3s[(duplicated(d3s[,"B"]) & duplicated(d3s[,"G"]) & duplicated(d3s[,"H"])),])
+
+## column E 
+d3s$E = gsub("^ *$", NA, d3s$E)
+View(d3s[order(d3s$E),])
 View(d3s)
 
-### read mulicipalities code data ###
-m = read.table('file:///C:/Users/Liangquan/Desktop/revmuni.txt', sep = '', col.names = paste0('V', seq_len(3)), fill = T)
-View(m)
+## combine D E F as address
+head(d3s)
+c1 = paste(paste(d3s$D, ifelse(!is.na(d3s$E), d3s$E, ''),sep = ' '), d3s$F, 'NJ', sep = ',')
+d3s$c1 = c1
 
 
-muni = file('revmuni.txt')
-munilist = strsplit(readLines(muni), ";")
-close(muni)
+#############################################################
+#############################################################
+## use google geocoding api to clean address
+apikey='AIzaSyCql9P7PeLE6dPVmXtkxN14MSgXCxXpcBU'
+c1s = c1[1:500]
 
-m1 = lapply(munilist, as.data.frame)
+geourl = 'https://maps.googleapis.com/maps/api/geocode/json?address='
 
-######################
+api_req = paste0(geourl, c1s[1], '&key=', apikey)
 
+##download.file(api_req, destfile = 't.json')
+
+## use to get data
+# fromJSON(api_req)
+
+
+## Better way: use geocode in ggmap packages to batch processing
+View(geocode(c1s[197],output = 'more',source = 'google'))
+
+add = geocode(c1s,output = 'more',source = 'google')
+b = add
+
+# choose right format of address
+b$premise = ifelse(!is.na(b$premise), b$premise, '')
+b$subpremise = ifelse(!is.na(b$subpremise), b$subpremise, '')
+b = paste(paste(b$street_number,b$route,b$premise,b$subpremise,sep = ' '),b$locality,b$administrative_area_level_2, sep = ',')
+
+## compare results
+d3s = d3s[1:500,]
+apn = cbind(as.character(d3s$A),as.character(add$administrative_area_level_2),as.character(d3s$B),
+  as.character(add$type),as.character(add$loctype),
+  as.character(d3s$C),as.character(c1s),as.character(add$address),as.character(d3s$G),as.character(d3s$H),as.character(d3s$J),
+  as.character(add$locality))
+
+View(apn)
+
+###############################################################
+###############################################################
+
+### load mulicipalities code data ### 
+d3s1$D = d3s1$c1
+drops = c('E','F','c1')
+d3s1 = d3s[,!(names(d3s) %in% drops)]
+head(d3s1)
 
