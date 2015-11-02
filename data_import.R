@@ -4,6 +4,7 @@ setwd("C:/Users/Liangquan/Google Drive/GovPilot/Teams/Data Aggregation _ Integri
 setwd("C:/Users/Liangquan Zhou/Desktop/govpilot/data_import/data_import")
 
 ############ packages needed ##############
+
 pckg = c('tidyr', 'stringi', 'data.table', 'reshape2', 'plyr','RgoogleMaps', 'httr', 'rjson', 'XML',
   'choroplethrMaps', 'choroplethr', 'RODBC', 'zipcode','RCurl','jsonlite', 'RJSONIO', 'ggmap') 
 
@@ -18,6 +19,15 @@ for(i in 1:length(pckg)) {
   library(pckg[i], character.only = T)
 }
 
+### given a dataframe and an array of names to drop,
+### drop these names and rename the df from alphabetically
+
+drop_and_rename = function(df, drops = NA){
+  names(df) = LETTERS[1:length(names(df))]
+  df = df[, !(names(df) %in% drops)]
+  names(df) = LETTERS[1:length(names(df))]
+  return(df)
+}
 
 
 ######## Read data ########
@@ -144,7 +154,7 @@ View(d3s)
 head(d3s)
 c1 = paste(paste(d3s$D, ifelse(!is.na(d3s$E), d3s$E, ''),sep = ' '), d3s$F, 'NJ', sep = ',')
 d3s$c1 = c1
-
+c1s = c1[1:500]
 
 #############################################################
 #############################################################
@@ -174,20 +184,31 @@ b$subpremise = ifelse(!is.na(b$subpremise), b$subpremise, '')
 b = paste(paste(b$street_number,b$route,b$premise,b$subpremise,sep = ' '),b$locality,b$administrative_area_level_2, sep = ',')
 
 ## compare results
-d3s = d3s[1:500,]
-apn = cbind(as.character(d3s$A),as.character(add$administrative_area_level_2),as.character(d3s$B),
-  as.character(add$type),as.character(add$loctype),
-  as.character(d3s$C),as.character(c1s),as.character(add$address),as.character(d3s$G),as.character(d3s$H),as.character(d3s$J),
+d3s1 = d3s[1:500,]
+apn = data.frame(as.character(d3s1$A),as.character(add$administrative_area_level_2),as.character(d3s1$B),
+  as.character(add$type),as.character(add$loctype), as.character(d3s1$C),as.character(c1s),
+  as.character(add$address),as.character(d3s1$G),as.character(d3s1$H),as.character(d3s1$J),
   as.character(add$locality))
 
 View(apn)
+
+apn = drop_and_rename(apn)
+apn_good = apn[which(apn$D == 'street_address' | apn$E == 'rooftop'),]
+apn_bad = apn[-which(apn$D == 'street_address' | apn$E == 'rooftop'),]
+write.table(apn_good, file = "apn_good.csv", sep = ',', row.names = F, col.names = F)
+write.table(apn_bad, file = "apn_bad.csv", sep = ',', row.names = F, col.names = F)
+
+
 
 ###############################################################
 ###############################################################
 
 ### load mulicipalities code data ### 
-d3s1$D = d3s1$c1
+
+d3s$D = d3s$c1
 drops = c('E','F','c1')
-d3s1 = d3s[,!(names(d3s) %in% drops)]
+d3s = d3s[,!(names(d3s) %in% drops)]
 head(d3s1)
+names(d3s) = LETTERS[1:length(names(d3s))]
+
 
