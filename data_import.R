@@ -29,13 +29,11 @@ drop_and_rename = function(df, drops = NA){
   return(df)
 }
 
-
 ######## Read data ########
 
 fc = file('pampac0601.txt')
 mylist = strsplit(readLines(fc), ";")
 close(fc)
-
 
 options(stringAsFactors=F)
 l2 = lapply(mylist, t)
@@ -95,19 +93,61 @@ d2s = d2s[!(is.na(d2s$C) | d2s$C==""), ]
 d2s = d2s[!duplicated(d2s[,"B"]),]
 
 #### connect to acess database ###
-# accessname = 'Fix Attorneys.accdb'
-# dbpath = paste(getwd(), '/', accessname, sep = '')
 
-# con = odbcConnectAccess2007(dbpath)
+ accessname = 'Fix Attorneys.accdb'
+ folderpath = "C:/Users/Liangquan/Google Drive/GovPilot/Teams/Data Aggregation _ Integrity Team/New Jersey/Data Import/Required Files"
+ dbpath = paste(folderpath, '/', accessname, sep = '')
 
-# sqlTables(con, tableType = "TABLE")$TABLE_NAME
+ con = odbcConnectAccess2007(dbpath)
 
-# Att <- sqlFetch(con, "List")
-# str(Att)
-# View(Att)
+ sqlTables(con, tableType = "TABLE")$TABLE_NAME
+ 
+ List <- sqlFetch(con, "List")
+ str(List)
+ # write.table(List,file= 'List.csv', sep = ",", row.names = F, col.names=F) # a list of all anttorney we have now
+ 
+ List$`Wrong Attorney` = trimws(List$`Wrong Attorney`)
+ List$`Right Attorney` = trimws(List$`Right Attorney`)
+ # update the attorney name on d2s
+ # which records in d2s in already in the List
+ a = which(d2s$C %in% List$`Wrong Attorney`)
+ #replace those records in d2s
+ d2s$D = NA
+ 
+ f = function(x){
+   n = which(List$`Wrong Attorney` == x)
+   x = List$`Right Attorney`[n] 
+   return(x)
+ }
+ d2s$D[a] = as.character(sapply(d2s$C[a], f))
+ 
+ # output all NAs in d2s$D, which are attorneys need to be updated
+ d2s1 = d2s[is.na(d2s$D),]
+ d2s1 = d2s1[!duplicated(d2s1[,"C"]),]
+ write.table(d2s1, 'update attorney.csv', col.names = F, row.names = F, sep = ",")
 
-
-
+## fix the attorney table and update it in the access database
+ 
+ d2s2 = read.table(file = 'update attorney.csv',sep = ',')
+ d2s2 = drop_and_rename(d2s2, c("A","B"))
+ names(d2s2) = c("Wrong Attorney","Right Attorney")
+# d2s2$ID = seq(from = length(List$ID)+1,length.out = length(d2s2$ID))
+ 
+ d2s3 = rbind(d2s2,List)
+ 
+ 
+ 
+ sqlSave(con, d2s2, tablename = "List", rownames = F, colnames = F, addPK = T, append = T, safer = T)
+ 
+ sqlUpdate(con,d2s2, tablename = "List", index = c("Wrong Attorney","Right Attorney"))
+ 
+ sqlQuery(con, 'insert into List (`Wrong Attorney`, `Right Attorney`) select WrongAttorney, RightAttorney from test1' )
+ sqlQuery(con, 'insert into List select * from test1')
+ 
+ bb = sqlQuery(con, 'select * from List union select * from test1')
+ sqlUpdate(con, d2s3, tablename = "List")
+ 
+View(bb) 
 write.table(d2s, file = "Attorney.csv", sep = ',', row.names = F, col.names = F)
 
 ################# APN #########################
