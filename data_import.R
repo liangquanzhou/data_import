@@ -163,29 +163,28 @@ d3s = d3[,!(names(d3) %in% drops)]
 head(d3s)
 
 names(d3s) = LETTERS[1:length(names(d3s))]
+# trim all columns (including column D, E, F)
+d3s = as.data.frame(apply(d3s, 2, trimws))
 
 ### remove rows have no address (D)
 # View(d3s1[order(d3s1$D),])
-d3s$D = gsub("^$|^ *$", NA, d3s$D)
-d3s = (d3s[!(is.na(d3s$D) | d3s$D==""), ])
+d3s$D = gsub("^$|^ *$", NA, d3s$D) #replace blanks address as NA
+d3s = (d3s[!(is.na(d3s$D) | d3s$D==""), ]) # delete rows with address = NA
 
-
-# trim column D, E, F
-d3s$D = trimws(d3s$D)
-d3s$E = trimws(d3s$E)
-d3s$F = trimws(d3s$F)
 
 ## remove duplicates 
 dup = which(d3s$B %in% d3s[duplicated(d3s[,"B"]),]$B) ## duplicated records in B
 dup.lev = d3s[duplicated(d3s[,"B"]),]$B #duplicated docket numbers
 
-## remove these records without blk and lot numbers
-d3s[dup,c("G","H")] = apply(d3s[dup,c("G","H")], 2, function(x) gsub("^ *$", NA, x))
+## remove these records without blk and lot numbers in duplicates
+d3s[dup,c("G","H")] = apply(d3s[dup,c("G","H")], 2, function(x) gsub("^ *$", NA, x)) #replace blanks in G, H as NA
+View(d3s[dup,])
 d3s = d3s[!(is.na(d3s$G) | is.na(d3s$G)), ]
 
-
 ## remove these rocords with same blk and lot numbers  -- NOT COMPLETED
-# View(d3s[(duplicated(d3s[,"B"]) & duplicated(d3s[,"G"]) & duplicated(d3s[,"H"])),])
+# dup in B, G, H 
+
+d3sdupBGH = d3s[duplicated(d3s[,c("B","G","H")]) | duplicated(d3s[,c("B","G","H")],fromLast = T),]
 
 ## column E 
 d3s$E = gsub("^ *$", NA, d3s$E)
@@ -194,7 +193,7 @@ View(d3s)
 
 ## combine D E F as address
 head(d3s)
-c1 = paste(paste(d3s$D, ifelse(!is.na(d3s$E), d3s$E, ''),sep = ' '), d3s$F, 'NJ', sep = ',')
+c1 = paste(paste(d3s$D, ifelse(!is.na(d3s$E), d3s$E, ''),sep = ''), d3s$F, 'NJ', sep = ',')
 d3s$c1 = c1
 c1s = c1[1:500]
 
