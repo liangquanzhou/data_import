@@ -6,7 +6,7 @@ setwd("C:/Users/Liangquan Zhou/Desktop/govpilot/data_import/data_import")
 ############ packages needed ##############
 
 pckg = c('tidyr', 'stringi', 'data.table', 'reshape2', 'plyr','RgoogleMaps', 'httr', 'rjson', 'XML',
-  'choroplethrMaps', 'choroplethr', 'RODBC', 'zipcode','RCurl','jsonlite', 'RJSONIO', 'ggmap') 
+  'choroplethrMaps', 'choroplethr', 'RODBC', 'zipcode','RCurl','jsonlite', 'RJSONIO', 'ggmap', 'xlsx') 
 
 is.installed <- function(mypkg){
   is.element(mypkg, installed.packages()[,1])
@@ -38,7 +38,7 @@ close(fc)
 options(stringAsFactors=F)
 l2 = lapply(mylist, t)
 l3 = lapply(l2, as.data.frame)
-d = as.data.frame(rbindlist(l3, fill = T))
+d = as.data.frame(rbindlist(l3, fill = T),stringAsFactors = F)
 
 d1 = d[d$V6 == "0",]
 d2 = d[d$V6 == "1",]
@@ -86,8 +86,6 @@ names(d2s) = LETTERS[1:length(names(d2s))]
 d2s$C = trimws(d2s$C)
 d2s = d2s[!(is.na(d2s$C) | d2s$C==""), ]
 
-# drops = c("D")
-# d2s = d2s[,!(names(d2s) %in% drops)]
 
 ## drop duplicates ##
 d2s = d2s[!duplicated(d2s[,"B"]),]
@@ -156,15 +154,11 @@ write.table(d2s, file = "Attorney.csv", sep = ',', row.names = F, col.names = F)
 head(d3)
 View(d3)
 
-names(d3) = LETTERS[1:length(names(d3))]
-
-drops = c('B', 'C', 'F', 'G', 'H', 'I', 'M', 'N', 'O', 'P', 'Q', 'R')
-d3s = d3[,!(names(d3) %in% drops)]
+d3s = drop_and_rename(d3, drops)
 head(d3s)
 
-names(d3s) = LETTERS[1:length(names(d3s))]
 # trim all columns (including column D, E, F)
-d3s = as.data.frame(apply(d3s, 2, trimws))
+d3s = data.frame(apply(d3s, 2, trimws), stringsAsFactors = F)
 
 ### remove rows have no address (D)
 # View(d3s1[order(d3s1$D),])
@@ -186,16 +180,138 @@ d3s = d3s[!(is.na(d3s$G) | is.na(d3s$G)), ]
 
 d3sdupBGH = d3s[duplicated(d3s[,c("B","G","H")]) | duplicated(d3s[,c("B","G","H")],fromLast = T),]
 
+d3snondup = d3s[!(duplicated(d3s[,c("B","G","H")]) | duplicated(d3s[,c("B","G","H")],fromLast = T)),]
+
+## output these dups and clean it manually
+
+write.xlsx(d3sdupBGH, file = "APNdups.xlsx",  col.names = F, row.names = F)
+
+# after clean it, reload it
+
+d3sdupBGH_cleaned = read.xlsx(file = "APNdups.xlsx", sheetIndex = 'Sheet1',stringsAsFactors = F,header = F)
+d3sdupBGH_cleaned = drop_and_rename(d3sdupBGH_cleaned)
+
+d3snew = rbind(d3snondup, d3sdupBGH_cleaned)
+
+d3s = d3snew
+
 ## column E 
+
+## fix all UNIT, APT, APTARTMENT in column E: paste it to column D
 d3s$E = gsub("^ *$", NA, d3s$E)
-View(d3s[order(d3s$E),])
+#View(d3s[order(d3s$E),])
+d3sE = d3s[!is.na(d3s$E),]
+d3snoE = d3s[is.na(d3s$E),]
+
+E = d3sE$E
+
+appendE = function(x){
+  return(length(grep("^(UNIT)|^(APT)|^(APARTMENT)",x)) == 1)
+}
+
+E1 = sapply(E, appendE, USE.NAMES = F)
+
+for (i in 1:length(E1)){
+  if (E1[i] == T) {
+    d3sE$D[i] = paste(d3sE$D[i], E[i])
+    d3sE$E[i] = NA
+  }
+}
+#View(d3sE)
+
+d3s = rbind(d3sE, d3snoE)
 View(d3s)
+
+## output all d3sE need to be manually fixed
+
+d3sEnew = d3s[!is.na(d3s$E),]
+d3s2 = d3s[is.na(d3s$E),]
+
+write.xlsx(d3sEnew, file = "APNcolumnE.xlsx", col.names = F, row.names = F)
+
+## import after fixed it
+d3sEgood = read.xlsx(file = "APNcolumnE.xlsx", sheetIndex = "Sheet1", header = F)
+d3sEgood = drop_and_rename(d3sEgood)
+d3s = rbind(d3sEgood, d3s2)
+d3s = data.frame(d3s, stringAsFactor = F)
+
+# now the column E should be all NAs
+
+## then update the county and town names and muni code
+
+accessname2 = 'Fix Town Names.accdb'
+folderpath2 = "C:/Users/Liangquan/Google Drive/GovPilot/Teams/Data Aggregation _ Integrity Team/New Jersey/Data Import/Required Files"
+dbpath2 = paste(folderpath2, '/', accessname2, sep = '')
+
+con2 = odbcConnectAccess2007(dbpath2)
+
+sqlTables(con2, tableType = "TABLE")$TABLE_NAME
+
+Key <- sqlFetch(con2, "Key")
+str(Key)
+# write.table(List,file= 'List.csv', sep = ",", row.names = F, col.names=F) # a list of all anttorney we have now
+
+Key = as.data.frame(apply(Key, 2, trimws))
+Key1 = Key[,c(2,5)]
+Key1 = unique(Key1)
+
+# update the attorney name on d2s
+# which records in d2s in already in the List
+b = which(d3s[,c("A","F")] %in% Key[,c("COUNTY","TOWN NAME")])
+
+b1 = which(d3s[,c("F")] %in% Key[,c("TOWN NAME")])
+
+# x should be a dataframe with 2 columns
+f1 = function(x){
+  n = which(Key$`TOWN NAME` == x[2] & Key$COUNTY == x[1])
+  x = cbind(Key$COUNTY[n], Key$`TOWN NAME`[n])
+  return(x)
+}
+
+bb = apply(d3s[,c("A","F")][b1,],1,f1)
+
+
+
+bb = as.character(apply(d3s[,c("A","F")],f1))
+
+
+#replace those records in d2s
+d2s$D = NA
+
+f = function(x){
+  n = which(List$`Wrong Attorney` == x)
+  x = List$`Right Attorney`[n] 
+  return(x)
+}
+d2s$D[a] = as.character(sapply(d2s$C[a], f))
 
 ## combine D E F as address
 head(d3s)
 c1 = paste(paste(d3s$D, ifelse(!is.na(d3s$E), d3s$E, ''),sep = ''), d3s$F, 'NJ', sep = ',')
 d3s$c1 = c1
 c1s = c1[1:500]
+
+c1 = paste(d3s$F,'NJ',sep = ",")
+c1s = c1[1:500]
+add = geocode(c1s,output = 'more',source = 'google')
+addsub = add[,c("locality","administrative_area_level_2")]
+
+View(add)
+View(cbind(addsub,d3s[1:500,c("A","F")]))
+
+
+
+OAKLAND BORO,Bergen,nj
+
+
+
+
+
+
+
+
+
+
 
 #############################################################
 #############################################################
