@@ -16,5 +16,6 @@ for (i in 1:length(document)) {
   d$sources = filename
   d = apply(d, 2, trimws)
   d = apply(d, 2, as.character)
-  write.table(d, file = "dan.csv", append = F, sep = ",", row.names = F, col.names = (i == 1), qmethod = "double")
+  #write.table(d, file = "dan.csv", append = F, sep = ",", row.names = F, col.names = (i == 1), qmethod = "double")
 }
+
