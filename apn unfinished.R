@@ -20,5 +20,9 @@ d3s[dup,c("G","H")] = apply(d3s[dup,c("G","H")], 2, function(x) gsub("^ *$", NA,
 #View(d3s[dup,])
 d3s = d3s[!(is.na(d3s$G) | is.na(d3s$G)), ]
 
+# View(d3s)
+d3s$J[d3s$J  == "1109"] = "1114"
+d3s$J[d3s$J  == "1110"] = "1114"
+
 write.table(d3s, file = "APN.csv",sep = ",", na = "", row.names = F, col.names = F)
 write.csv(d3s, file = "APN.csv")
