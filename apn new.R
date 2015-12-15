@@ -1,151 +1,37 @@
 
+d3s = drop_and_rename(d3, drops = c("B","C","F","G","H","I","M","N","O","P","Q","R"))
+#head(d3s)
 
-# -- set the path to the tax data to import the data
-# for pc
-setwd("C:/Users/Liangquan/Desktop/tax data") 
-# for mac
-setwd('/Users/liangquanzhou/Documents/data/nj tax data/')
+# trim all columns (including column D, E, F)
+d3s = data.frame(apply(d3s, 2, trimws), stringsAsFactors = F)
 
-# -- function: read the txt file, return a dataframe
-f = function(x) {
-  x1 = substring(x, startnum, endnum)
-  names(x1) = name
-  return(x1)
+### remove rows have no address (D)
+# View(d3s1[order(d3s1$D),])
+d3s$D = gsub("^$|^ *$", NA, d3s$D) #replace blanks address as NA
+d3s = (d3s[!(is.na(d3s$D) | d3s$D==""), ]) # delete rows with address = NA
+
+
+## remove duplicates 
+dup = which(d3s$B %in% d3s[duplicated(d3s[,"B"]),]$B) ## duplicated records in B
+dup.lev = d3s[duplicated(d3s[,"B"]),]$B #duplicated docket numbers
+
+## remove these records without blk and lot numbers in duplicates
+d3s[dup,c("G","H")] = apply(d3s[dup,c("G","H")], 2, function(x) gsub("^ *$", NA, x)) #replace blanks in G, H as NA
+#View(d3s[dup,])
+d3s = d3s[!(is.na(d3s$G) | is.na(d3s$G)), ]
+
+# View(d3s)
+d3s$J[d3s$J  == "1109"] = "1114"
+d3s$J[d3s$J  == "1110"] = "1114"
+
+# use docket number to refer the owner name in the plaintiff dataset
+for (i in 1:dim(d3s)[1]){
+  if (length(d1s$V9.2[which(d1s$V4 == d3s$B[i])]) != 1) print(i)
+  d3s$owner_full[i] = d1s$V9.2[which(d1s$V4 == d3s$B[i])]
 }
 
-# -- refer to the tax data dictionary, select all the columns we need and name it 
-# _s means suffix, p means previous
-startnum = c(1, 5, 10, 14, 19, 23, 59, 176, 522, 527, 531, 536, 540)
-endnum = c(4, 9, 13, 18, 22, 33, 83, 210, 526, 530, 535, 539, 550)
-name = c("muni", "blk", "blk_s", "lot", "lot_s", "qual", "address", 
-         "owner", "p_blk","p_blk_s","p_lot", "p_lot_s","p_qual")
-
-# -- function: in the folder of data, input the filename then import 
-#              data in that file 
-output = function(filename) {
-  con = file(filename)
-  l = strsplit(readLines(con), "\n")
-  close(con)
-  l1 = lapply(l, f)
-  l2 = lapply(l1, t)
-  d1 = do.call("rbind", l2)
-  d2 = as.data.frame(d1, stringsAsFactors = F)
-  return(d2)
-}
-
-# -- list of every county's data
-county = list()
-
-# -- loop: go through every filename in the folder and generate data 
-#          for every county
-for (i in 1:length(dir())) {
-  county[[i]] = output(dir()[i])
-}
-
-# -- complie every county data to nj data
-nj = rbindlist(county)
-nj = apply(nj, 2, as.character) # set as character
-nj = apply(nj, 2, trimws) # trim the beginning and ending spaces
-nj = as.data.frame(nj, stringsAsFactors = F)
-
-# -- create backup dataset incase messed up
-nj.temp = nj
-nj = nj.temp
-
-# -- clean up blk and lot:
-# columns we have: blk, blk suffix, lot, lot suffix, qual AND:
-#                  previous blk, previous blk suffix, etc.
-# combine blk and blk_s as blkn, lot and lot_s as lotn, previous ones as well
-
-# -- create back up to install raw blk and lot.
-nj$blk_raw = nj$blk
-nj$lot_raw = nj$lot
-nj$p_blk_raw = nj$p_blk
-nj$p_lot_raw = nj$p_lot
-
-# -- trim and set NA as ""(blank)
-nj$blk = as.character(as.numeric(nj$blk))
-nj$blk[is.na(nj$blk)] = ""
-nj$lot = as.character(as.numeric(nj$lot))
-nj$lot[ia.na(nj$lot)] = ""
-nj$p_blk = as.character(as.numeric(nj$p_blk))
-nj$p_blk[is.na(nj$p_blk)] = ""
-nj$p_lot = as.character(as.numeric(nj$p_lot))
-nj$p_lot[is.na(nj$p_lot)] = ""
-
-# -- incase of any space in the middle, drop them
-nj$blk = gsub("( +)", "", nj$blk)
-nj$lot = gsub("( +)", "", nj$lot)
-nj$p_blk = gsub("( +)", "", nj$p_blk)
-nj$p_lot = gsub("( +)", "", nj$p_lot)
-
-# -- trim blk_s, lot_s, for combine blk and blk_s, etc.
-nj$blk_s = trimws(nj$blk_s)
-nj$lot_s = trimws(nj$lot_s)
-nj$p_blk_s = trimws(nj$p_blk_s)
-nj$p_lot_s = trimws(nj$p_lot_s)
-nj$qual = trimws(nj$qual)
-nj$p_qual = trimws(nj$p_qual)
-
-# -- for exist suffix, then append it to the blk or lot.
-nj$blk[which(nj$blk_s != "")] = paste(nj$blk[which(nj$blk_s != "")], ".", sep = "")
-nj$lot[which(nj$lot_s != "")] = paste(nj$lot[which(nj$lot_s != "")], ".", sep = "")
-nj$p_blk[which(nj$p_blk_s != "")] = paste(nj$p_blk[which(nj$p_blk_s != "")], ".", sep = "")
-nj$p_lot[which(nj$p_lot_s != "")] = paste(nj$p_lot[which(nj$p_lot_s != "")], ".", sep = "")
-
-# -- updata blk, lot with suffix
-nj$blk = paste(nj$blk, nj$blk_s, sep = "")
-nj$lot = paste(nj$lot, nj$lot_s, sep = "")
-nj$p_blk = paste(nj$p_blk, nj$p_blk_s, sep = "")
-nj$p_lot = paste(nj$p_lot, nj$p_lot_s, sep = "")
-
-# -- combine lot and qual, since it's combined in foreclosure data, we will use it to search
-nj$lotqual = paste(nj$lot,nj$qual,sep = "")
-nj$p_lotqual = paste(nj$p_lot, nj$p_qual, sep = "")
-
-# -- then the nj tax data is done, store it in database
-#####################################
-# for sql server:
-# -- connect to sql server database and write data into database
-sqlHost <- "GP-4\\SQLEXPRESS"
-sqlDatabase <- "NJ_property"
-dsnString <- "driver={SQL Server};server=%s;database=%s;trusted_connection=true"
-dsn <- sprintf(dsnString, sqlHost, sqlDatabase)
-con<- odbcDriverConnect(dsn)
-
-# -- save the data as a table 
-
-sqlSave(con, nj, tablename = "njproperty", rownames = F, colnames = F, fast = T) # ~ 900 seconds to run
-
-# -- for quicker search, split the nj table for every county, corresponding to its muni code
-muniv = sqlQuery(con, "select distinct muni from njproperty", as.is = T)
-
-# problem muni codes: 0288, 1109, 1110, 1300, 1500, 2118
-
-ptm <- proc.time()
-for (i in 1:length(muniv[,1])){
-  query = sprintf("select * into muni%s from njproperty where muni = '%s'", muniv[i,1], muniv[i,1])
-  sqlQuery(con, query)
-}
-proc.time() - ptm
-# ~ 140 seconds
-
-#####################################
-# for mysql:
-# -- connect to mysql database and write data into database
-install.packages("RMySQL")
-library(RMySQL)
-library(psych)
-
-con <- dbConnect(MySQL(),
-                 user = 'root',
-                 password = '',
-                 host = '',
-                 dbname='NJ_property')
-dbWriteTable(conn = con, name = 'njproperty', value = as.data.frame(nj))
-
-
-
+d3s$owner_first = gsub("(\\b\\S*\\b)(\\s.*)", "\\1", d3s$owner_full)
+K
 # -- clean up the blk and lot column in d3s
 blk = d3s$G
 lot = d3s$H
@@ -186,6 +72,14 @@ lot4 = gsub(lotpattern4, "\\1\\3", lot3)
 lotn = lot4
 lotn = trimws(lotn)
 
+# -- connect to sql server database and write data into database
+sqlHost <- "GP-4\\SQLEXPRESS"
+sqlDatabase <- "NJ_property"
+dsnString <- "driver={SQL Server};server=%s;database=%s;trusted_connection=true"
+dsn <- sprintf(dsnString, sqlHost, sqlDatabase)
+con<- odbcDriverConnect(dsn)
+
+
 # -- search method:
 # 1. if muni, blk, lot in foreclosure data match exactly the muni, blk, lotqual,
 #    means these are 'good' data, set indicator = 1, store in table1
@@ -194,7 +88,7 @@ ptm <- proc.time()
 table1 = data.frame()
 table2 = data.frame()
 for (i in 1:dim(d3s)[1]){
-  a = c(d3s$J[i], blkn[i], lotn[i], paste(d3s$D[i], d3s$F[i], sep = ", "), d3s$C[i], d3s$B[i])
+  a = c(d3s$J[i], blkn[i], lotn[i], paste(d3s$D[i], d3s$F[i], sep = ", "), d3s$C[i], d3s$B[i], d3s$owner_full[i], d3s$owner_first[i])
   query1 = sprintf("select * from muni%s where blk = '%s' and lotqual = '%s'", a[1], a[2], a[3])
   query2 = sprintf("select * from muni%s where p_blk = '%s' and p_lotqual = '%s'", a[1], a[2], a[3])
   query = sprintf("if exists (%s) begin %s end else begin %s end", query1, query1, query2)
@@ -212,13 +106,15 @@ for (i in 1:dim(d3s)[1]){
   tmp$raddress = a[4]
   tmp$ryear = a[5]
   tmp$docket = a[6]
+  tmp$owner_full = a[7]
+  tmp$owner_first = a[8]
 
   if (tmp$indicator == 1){
     table1 = rbind(table1, tmp)
   } else table2 = rbind(table2, tmp)
 }
 proc.time() - ptm
-
+# about 90 sec
 
 # -- with table2: indicator = 2 
 # guess: maybe the muni and blk are correct, only the lot&qual is wrong
@@ -255,8 +151,8 @@ proc.time() - ptm
 #table2 = table2[table2$indicator == 2,]
 
 
-# table2.temp = table2 # backup
-#table2 = table2.temp
+table2.temp = table2 # backup
+table2 = table2.temp
 
 # -- another guess: muni is correct, but blk could be wrong
 # in this way we can not use geocode tools. 
@@ -265,7 +161,6 @@ proc.time() - ptm
 # -- format the addresses in table2
 
 raddress = table2$raddress
-
 raddress = gsub("\\bAVENUE\\b","AVE", raddress)
 raddress = gsub("\\bCOURT\\b","CT", raddress)
 raddress = gsub("\\bROAD\\b","RD", raddress)
@@ -289,39 +184,45 @@ table2$raddress = raddress
 #    matched the formatted address, use it and set indicator = 4
 # -- then output all the data with indicator = 2, means we have to do it manually.
 
+ptm <- proc.time()
 for (i in 1:dim(table2)[1]){
   b = c(table2$rmuni[i], table2$raddress[i])
   query = sprintf("select * from muni%s where address = '%s'", b[1], b[2])
   tmp2 = sqlQuery(con, query, as.is = T, na.strings = "", stringsAsFactors = F)
   if (dim(tmp2)[1] == 1) {
-    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket")
+    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket", "owner_full", "owner_first")
     table2[i,!(names(table2) %in% drops)] = tmp2[1,]
     table2[i, "indicator"] = 4
   }
   # with >1 records: usually these records are big properties with same blk and 
   # lot but qual is different, output all of them for reference, and set 
   # indicator = 5
-  if (dim(tmp2)[1] > 1) {
-    table2[i, "indicator"] = 5
-    write.table(tmp2, file = "table5reference.xlsx", append = T, row.names = F, col.names = F, qmethod = "double")
+  #if (dim(tmp2)[1] > 1) {
+  #  table2[i, "indicator"] = 5
+  #  write.table(tmp2, file = "table5reference.xlsx", append = T, row.names = F, col.names = F, qmethod = "double")
     
-  }
+  #}
 }
+proc.time() - ptm
+
+table2.temp = table2 # backup
+table2 = table2.temp
 
 table4 = table2[table2$indicator == 4,]
-table5 = table2[table2$indicator == 5,]
+# table5 = table2[table2$indicator == 5,]
 table2 = table2[table2$indicator == 2,]
 
 ## table5 need to be manually checked, but luckly table5 has reference
 
 ## output table2 for manually check
-write.xlsx(table5, "table5.xlsx", col.names = F, row.names = F, showNA = F)
+# write.xlsx(table5, "table5.xlsx", col.names = F, row.names = F, showNA = F)
 
 # -- many records in table2 seems hava good format of blk and lot
 # -- another guess: blk and lot coulb correct but the muni is wrong
 # search it in the whole nj tax data table 
 # -- set indicator = 6 for wrong muni but other right
 
+ptm <- proc.time()
 for (i in 1:dim(table2)[1]){
   a = c(table2$rblk[i], table2$rlot[i], table2$raddress[i])
   query1 = sprintf("select * from njproperty where blk = '%s' and lotqual = '%s' and address like '!%s!'", a[1], a[2], a[3], a[4])
@@ -329,20 +230,26 @@ for (i in 1:dim(table2)[1]){
   
   tmp2 = sqlQuery(con, query2, as.is = T, na.strings = "", stringsAsFactors = F)
   if (dim(tmp2)[1] == 1) {
-    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket")
+    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket", "owner_full", "owner_first")
     table2[i,!(names(table2) %in% drops)] = tmp2[1,]
     table2[i, "indicator"] = 6
   }
 }
-# this gonna take long  time to run
+proc.time() - ptm # very slow about 170 sec
+
+# this gonna take long time to run
 
 table6 = table2[table2$indicator == 6,]
 table2 = table2[table2$indicator == 2,]
 
+table2.temp = table2 # backup
+table2 = table2.temp
+
 # -- match part of the address in table 2 and exact blk number
 
-addpattern = "(\\b.*\\b)(\\s+)(\\b.*\\b)(\\s+).*"
+addpattern = "(\\b\\S+\\b)(\\s+)(\\b\\S+\\b)(\\s+).*"
 
+ptm <- proc.time()
 for (i in 1:dim(table2)[1]){
   a = c(table2$rblk[i], table2$raddress[i])
   part_add = gsub(addpattern, "\\1\\2\\3", table2$raddress[i])
@@ -351,21 +258,26 @@ for (i in 1:dim(table2)[1]){
   
   tmp2 = sqlQuery(con, query2, as.is = T, na.strings = "", stringsAsFactors = F)
   if (dim(tmp2)[1] == 1) {
-    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket")
+    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket", "owner_full", "owner_first")
     table2[i,!(names(table2) %in% drops)] = tmp2[1,]
     table2[i, "indicator"] = 7
   }
 }
+proc.time() - ptm # about 110 sec
 
 # set fixed indicator = 7
+
+table2.temp = table2 # backup
+table2 = table2.temp
 
 table7 = table2[table2$indicator == 7,]
 table2 = table2[table2$indicator == 2,]
 
 # -- muni is correct, blk or lotqual wrong, match part of = address
 
-addpattern = "(\\b.*\\b)(\\s+)(\\b.*\\b)(\\s+).*"
+addpattern = "(\\b\\S+\\b)(\\s+)(\\b\\S+\\b)(\\s+).*"
 
+ptm <- proc.time()
 for (i in 1:dim(table2)[1]){
   a = c(table2$rmuni[i], table2$raddress[i])
   part_add = gsub(addpattern, "\\1\\2\\3", table2$raddress[i])
@@ -374,21 +286,26 @@ for (i in 1:dim(table2)[1]){
   
   tmp2 = sqlQuery(con, query2, as.is = T, na.strings = "", stringsAsFactors = F)
   if (dim(tmp2)[1] == 1) {
-    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket")
+    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket", "owner_full", "owner_first")
     table2[i,!(names(table2) %in% drops)] = tmp2[1,]
     table2[i, "indicator"] = 8
   }
 }
+proc.time() - ptm # about 60 sec
 
 # set fixed indicator = 8 
+
+table2.temp = table2 # backup
+table2 = table2.temp
 
 table8 = table2[table2$indicator == 8,]
 table2 = table2[table2$indicator == 2,]
 
 # -- lotqual correct, muni or blk wrongm match part of address
 
-addpattern = "(\\b.*\\b)(\\s+)(\\b.*\\b)(\\s+).*"
+addpattern = "(\\b\\S+\\b)(\\s+)(\\b\\S+\\b)(\\s+).*"
 
+ptm <- proc.time()
 for (i in 1:dim(table2)[1]){
   a = c(table2$rlot[i], table2$raddress[i])
   part_add = gsub(addpattern, "\\1\\2\\3", table2$raddress[i])
@@ -397,60 +314,106 @@ for (i in 1:dim(table2)[1]){
   
   tmp2 = sqlQuery(con, query2, as.is = T, na.strings = "", stringsAsFactors = F)
   if (dim(tmp2)[1] == 1) {
-    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket")
+    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket", "owner_full", "owner_first")
     table2[i,!(names(table2) %in% drops)] = tmp2[1,]
     table2[i, "indicator"] = 9
   }
 }
+proc.time() - ptm # about 50 sec
+
 # set fixed indicator = 9 
+
+table2.temp = table2 # backup
+table2 = table2.temp
 
 table9 = table2[table2$indicator == 9,]
 table2 = table2[table2$indicator == 2,]
 
+## search the part of the address and the owner's first name
 
+addpattern = "(\\b\\S+\\b)(\\s+)(\\b\\S+\\b)(\\s+).*"
 
-
-
-
-
-table134 = rbind(table1, table3, table4)
-write.xlsx(table134, "table134.xlsx", col.names = F, row.names = F, showNA = F)
-
-
-
-
-
-
-
-
-
-
-
-
-
-f = function(x){
-  x = as.character(x)
-  #a = x[2] %in% nj[which(nj$muni == x[1]),]$blk
-  a = which(nj$muni == x[1] & nj$blk == x[2] & nj$lotqual == x[3])
-  b = which(nj$muni == x[1] & nj$p.blk == x[2] & nj$p.lotqual == x[3])
-  if (length(a) == 1) {
-    nj$blk.raw[a] -> x[4]
-    nj$blk.s[a] -> x[5]
-    nj$lot.raw[a] -> x[6]
-    nj$lot.s[a] -> x[7]
-    nj$qual[a] -> x[8]
-    nj$address[a] -> x[9]
-  } else if (length(b) == 1) {
-    nj$blk.raw[b] -> x[4]
-    nj$blk.s[b] -> x[5]
-    nj$lot.raw[b] -> x[6]
-    nj$lot.s[b] -> x[7]
-    nj$qual[b] -> x[8]
-    nj$address[b] -> x[9]
+ptm <- proc.time()
+for (i in 1:dim(table2)[1]){
+  a = c(table2$raddress[i], table2$owner_first[i])
+  part_add = gsub(addpattern, "\\1\\2\\3", table2$raddress[i])
+  query1 = sprintf("select * from njproperty where address like '%s!' and owner like '%s!'", part_add, a[2])
+  query2 = gsub("!","%",query1)
+  
+  tmp2 = sqlQuery(con, query2, as.is = T, na.strings = "", stringsAsFactors = F)
+  if (dim(tmp2)[1] == 1) {
+    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket", "owner_full", "owner_first")
+    table2[i,!(names(table2) %in% drops)] = tmp2[1,]
+    table2[i, "indicator"] = 10
   }
-  return(x)
 }
+proc.time() - ptm # about 40 sec
 
-test = apply(apn[1:300,], 1, f)
-test = t(test)
-View(test1)
+table2.temp = table2 # backup
+table2 = table2.temp
+
+table10 = table2[table2$indicator == 10,]
+table2 = table2[table2$indicator == 2,]
+
+## -- some of address could spell wrong, only search the number of address and the muni, with the first name
+
+addpattern2 = "(\\b\\S+\\b)(\\s+).*"
+
+ptm <- proc.time()
+for (i in 1:dim(table2)[1]){
+  a = c(table2$rmuni[i], table2$raddress[i], table2$owner_first[i])
+  part_add = gsub(addpattern2, "\\1", table2$raddress[i])
+  query1 = sprintf("select * from njproperty where muni like '%s' and address like '%s!' and owner like '%s!'", a[1], part_add, a[3])
+  query2 = gsub("!","%",query1)
+  
+  tmp2 = sqlQuery(con, query2, as.is = T, na.strings = "", stringsAsFactors = F)
+  if (dim(tmp2)[1] == 1) {
+    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket", "owner_full", "owner_first")
+    table2[i,!(names(table2) %in% drops)] = tmp2[1,]
+    table2[i, "indicator"] = 11
+  }
+}
+proc.time() - ptm # about 30 sec
+
+table2.temp = table2 # backup
+table2 = table2.temp
+
+table11 = table2[table2$indicator == 11,]
+table2 = table2[table2$indicator == 2,]
+
+
+# address also could be wrong, so use the search in 11, but use blk instead of muni
+
+addpattern2 = "(\\b\\S+\\b)(\\s+).*"
+
+ptm <- proc.time()
+for (i in 1:dim(table2)[1]){
+  a = c(table2$rblk[i], table2$raddress[i], table2$owner_first[i])
+  part_add = gsub(addpattern2, "\\1", table2$raddress[i])
+  query1 = sprintf("select * from njproperty where blk like '%s' and address like '%s!' and owner like '%s!'", a[1], part_add, a[3])
+  query2 = gsub("!","%",query1)
+  
+  tmp2 = sqlQuery(con, query2, as.is = T, na.strings = "", stringsAsFactors = F)
+  if (dim(tmp2)[1] == 1) {
+    drops = c("indicator", "rmuni", "rblk", "rlot", "raddress", "ryear", "docket", "owner_full", "owner_first")
+    table2[i,!(names(table2) %in% drops)] = tmp2[1,]
+    table2[i, "indicator"] = 12
+  }
+}
+proc.time() - ptm # about 30 sec
+
+table2.temp = table2 # backup
+table2 = table2.temp
+
+table12 = table2[table2$indicator == 12,]
+table2 = table2[table2$indicator == 2,]
+
+# now the table2 is impossible to imporve anymore...
+
+## gather all data we have 
+
+table = rbind(table1, table4, table6, table7, table8, table9, table10, table11, table12)
+
+write.table(table, "good_apn.csv", sep = ",", row.names = F, col.names = T, qmethod = "double", na = "")
+write.table(table2, "bad_apn.csv", sep = ",", row.names = F, col.names = T, qmethod = "double", na = "")
+
