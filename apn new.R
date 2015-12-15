@@ -81,7 +81,7 @@ con<- odbcDriverConnect(dsn)
 
 
 # -- search method:
-# 1. if muni, blk, lot in foreclosure data match exactly the muni, blk, lotqual,
+# 1. if muni, blk, lot, address, owner in foreclosure data match exactly the muni, blk, lotqual,
 #    means these are 'good' data, set indicator = 1, store in table1
 # 2. if not perfect matched, set indicator = 2, store in table2
 ptm <- proc.time()
